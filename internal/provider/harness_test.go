@@ -18,6 +18,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/jacobalberty/go-unifi/inform"
+
+	configv1 "github.com/jacobalberty/beenfar/api/gen/go/beenfar/config/v1"
 )
 
 // Acceptance tests run against a real beenfard on a temporary SQLite
@@ -194,12 +196,56 @@ func (d *fakeDevice) inform(t *testing.T, c *controller) (int, map[string]any) {
 	return resp.StatusCode, out
 }
 
+// settle follows the controller's instructions until it has nothing more
+// to say: it takes the key and config version of each setparam.
+func (d *fakeDevice) settle(t *testing.T, c *controller) {
+	t.Helper()
+	for range 5 {
+		status, reply := d.inform(t, c)
+		if status != http.StatusOK {
+			t.Fatalf("inform: HTTP %d", status)
+		}
+		if reply["_type"] != "setparam" {
+			return
+		}
+		mgmt, err := inform.ParseConfig(reply["mgmt_cfg"].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if k, ok := mgmt.Get(inform.KeyAuthKey); ok {
+			if d.key, err = inform.ParseKey(k); err != nil {
+				t.Fatal(err)
+			}
+		}
+		d.cfg, _ = mgmt.Get(inform.KeyCfgVersion)
+	}
+	t.Fatal("device did not settle")
+}
+
+// reset makes the device speak the factory default key again.
+func (d *fakeDevice) reset() { d.key, d.cfg = inform.DefaultKey(), "" }
+
 // announce makes the device known to the controller as pending.
 func (d *fakeDevice) announce(t *testing.T, c *controller) {
 	t.Helper()
 	if status, _ := d.inform(t, c); status != http.StatusNotFound {
 		t.Fatalf("first inform: HTTP %d, want 404", status)
 	}
+}
+
+// device returns the controller's view of d.
+func (c *controller) device(t *testing.T, d *fakeDevice) *configv1.Device {
+	t.Helper()
+	res, err := c.Client.Devices.ListDevices(context.Background(), &configv1.ListDevicesRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dev := range res.GetDevices() {
+		if dev.GetMac() == d.MAC() {
+			return dev
+		}
+	}
+	return nil
 }
 
 // --- a second Terraform configuration ---

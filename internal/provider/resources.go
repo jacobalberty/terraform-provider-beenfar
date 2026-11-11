@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -241,5 +242,63 @@ func (secretVersionModifier) PlanModifyInt64(ctx context.Context, req planmodifi
 	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("shared_secret"), &stored)...)
 	if planned.Equal(stored) {
 		resp.PlanValue = req.StateValue
+	}
+}
+
+// --- beenfar_switch_port ---
+
+func newSwitchPortResource() resource.Resource {
+	return &crud[model.SwitchPort, *configv1.SwitchPort]{
+		typeName: "_switch_port",
+		what:     "switch port",
+		schema: schema.Schema{
+			MarkdownDescription: "Settings of one port of an adopted switch. A port with no settings runs " +
+				"with the device's defaults; destroying this resource returns the port to them." +
+				"\n\nOnly the attributes set in the configuration are managed: the others are neither " +
+				"changed by Terraform nor reported as drift, so they can be managed in the beenfar UI.",
+			Attributes: map[string]schema.Attribute{
+				"id": idAttribute(),
+				"device_id": schema.StringAttribute{
+					MarkdownDescription: "Id of the adopted device, e.g. `beenfar_device.x.id`.",
+					Required:            true,
+					PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				},
+				"port_index": schema.Int64Attribute{
+					MarkdownDescription: "1-based port number, as printed on the device.",
+					Required:            true,
+					Validators:          []validator.Int64{int64validator.AtLeast(1)},
+					PlanModifiers:       []planmodifier.Int64{int64planmodifier.RequiresReplace()},
+				},
+				"name":              optionalString("Port label, at most 64 bytes.", stringvalidator.LengthAtMost(64)),
+				"disabled":          optionalBool("Turn the port off."),
+				"native_network_id": optionalString("Id of the `beenfar_network` carried untagged; empty for the default network."),
+				"tagging": optionalString("Networks carried tagged: `all` (the controller's default), `none`, or `custom` "+
+					"for those in `tagged_network_ids`.", stringvalidator.OneOf("all", "none", "custom")),
+				"tagged_network_ids": optionalStringSet("Ids of the networks carried tagged, with `tagging = \"custom\"`."),
+				"poe_mode":           optionalString("Power over Ethernet: `auto` (the controller's default) or `off`.", stringvalidator.OneOf("auto", "off")),
+			},
+		},
+		toModel:   convgen.SwitchPortToModel,
+		fromModel: convgen.SwitchPortFromModel,
+		idOf:      func(m model.SwitchPort) string { return m.ID.ValueString() },
+		setID:     func(p *configv1.SwitchPort, id string) { p.Id = id },
+		etagOf:    func(p *configv1.SwitchPort) string { return p.GetEtag() },
+		create: func(ctx context.Context, c *Client, p *configv1.SwitchPort) (*configv1.SwitchPort, error) {
+			r, err := c.SwitchPorts.CreateSwitchPort(ctx, &configv1.CreateSwitchPortRequest{SwitchPort: p})
+			return r.GetSwitchPort(), err
+		},
+		get: func(ctx context.Context, c *Client, id string) (*configv1.SwitchPort, error) {
+			r, err := c.SwitchPorts.GetSwitchPort(ctx, &configv1.GetSwitchPortRequest{Id: id})
+			return r.GetSwitchPort(), err
+		},
+		update: func(ctx context.Context, c *Client, p *configv1.SwitchPort, etag string, mask *fieldmaskpb.FieldMask) (*configv1.SwitchPort, error) {
+			p.Etag = etag
+			r, err := c.SwitchPorts.UpdateSwitchPort(ctx, &configv1.UpdateSwitchPortRequest{SwitchPort: p, UpdateMask: mask})
+			return r.GetSwitchPort(), err
+		},
+		del: func(ctx context.Context, c *Client, id string) error {
+			_, err := c.SwitchPorts.DeleteSwitchPort(ctx, &configv1.DeleteSwitchPortRequest{Id: id})
+			return err
+		},
 	}
 }

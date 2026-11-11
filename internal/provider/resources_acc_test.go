@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect/v2"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -236,6 +237,10 @@ resource "beenfar_wifi_network" "home" {
 	})
 }
 
+// waitSilent outlasts BEENFAR_UNIFI_READOPT_AFTER (1s in the harness), after
+// which a device that informs with the default key counts as reset.
+func waitSilent() { time.Sleep(1500 * time.Millisecond) }
+
 // raceUI is a plan check that runs fn after the plan, before the apply.
 type raceUI func() error
 
@@ -312,6 +317,137 @@ resource "beenfar_wifi_network" "corp" {
 				// out the secret it never returns and the accounting port the
 				// configuration sets to zero.
 				ImportStateVerifyIgnore: []string{"shared_secret", "auth_port", "accounting_port"},
+			},
+		},
+	})
+}
+
+// A device is adopted by creating the resource, imported by MAC, re-adopted
+// after a factory reset and forgotten on destroy; ports of the adopted
+// device are configured with beenfar_switch_port.
+func TestAccDeviceAndSwitchPorts(t *testing.T) {
+	c := startController(t)
+	ctx := context.Background()
+	dev := newFakeDevice(1)
+	dev.announce(t, c)
+
+	var portID string
+	config := func(poe string) string {
+		return c.config(fmt.Sprintf(`
+data "beenfar_pending_devices" "unifi" {
+  adapter = "unifi"
+}
+
+resource "beenfar_device" "switch" {
+  mac = %q
+}
+
+resource "beenfar_network" "iot" {
+  name    = "iot"
+  vlan_id = 20
+}
+
+resource "beenfar_switch_port" "p2" {
+  device_id          = beenfar_device.switch.id
+  port_index         = 2
+  tagging            = "custom"
+  tagged_network_ids = [beenfar_network.iot.id]
+  poe_mode           = %q
+}`, dev.MAC(), poe))
+	}
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: providers(),
+		CheckDestroy: func(*terraform.State) error {
+			if d := c.device(t, dev); d != nil {
+				return fmt.Errorf("device still known after destroy: %v", d)
+			}
+			return nil
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: config("off"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("beenfar_device.switch", "adapter", "unifi"),
+					resource.TestCheckResourceAttr("beenfar_device.switch", "model", "U7PG2"),
+					func(s *terraform.State) (err error) { portID, err = stateID(s, "beenfar_switch_port.p2"); return err },
+					func(*terraform.State) error {
+						if d := c.device(t, dev); d.GetState() != configv1.DeviceState_DEVICE_STATE_ADOPTED {
+							return fmt.Errorf("device = %v, want adopted", d)
+						}
+						return nil
+					},
+				),
+			},
+			{
+				// The device takes its key; the UI labels the port.
+				PreConfig: func() {
+					dev.settle(t, c)
+					if _, err := c.Client.SwitchPorts.UpdateSwitchPort(ctx, &configv1.UpdateSwitchPortRequest{
+						SwitchPort: &configv1.SwitchPort{Id: portID, Name: "printer"},
+						UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name"}},
+					}); err != nil {
+						t.Fatal(err)
+					}
+				},
+				Config:           config("off"),
+				ConfigPlanChecks: expectEmptyPlan(),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("data.beenfar_pending_devices.unifi", tfjsonpath.New("devices"), knownvalue.ListSizeExact(0)),
+				},
+			},
+			{
+				Config: config("auto"),
+				Check: func(*terraform.State) error {
+					r, err := c.Client.SwitchPorts.GetSwitchPort(ctx, &configv1.GetSwitchPortRequest{Id: portID})
+					if err == nil && (r.GetSwitchPort().GetPoeMode() != configv1.PoeMode_POE_MODE_AUTO || r.GetSwitchPort().GetName() != "printer") {
+						err = fmt.Errorf("port = %v", r.GetSwitchPort())
+					}
+					return err
+				},
+			},
+			{
+				ResourceName:            "beenfar_switch_port.p2",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"name"},
+			},
+			{
+				ResourceName:            "beenfar_device.switch",
+				ImportState:             true,
+				ImportStateId:           dev.MAC(),
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"ip"},
+			},
+			{
+				// The device is factory reset: after a silent second it
+				// informs with the default key and awaits re-adoption. The
+				// plan creates the device resource again; applying accepts
+				// the re-adoption, keeping the device and its port settings.
+				PreConfig: func() {
+					dev.reset()
+					waitSilent()
+					if status, _ := dev.inform(t, c); status != 404 {
+						t.Fatalf("reset device inform: HTTP %d", status)
+					}
+					if d := c.device(t, dev); d.GetReadoption() != configv1.ReadoptionState_READOPTION_STATE_AWAITING_ACCEPTANCE {
+						t.Fatalf("device after reset = %v, want awaiting re-adoption", d)
+					}
+				},
+				Config: config("auto"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("beenfar_device.switch", plancheck.ResourceActionCreate),
+					plancheck.ExpectResourceAction("beenfar_switch_port.p2", plancheck.ResourceActionNoop),
+				}},
+				Check: func(s *terraform.State) error {
+					got, err := stateID(s, "beenfar_switch_port.p2")
+					if err == nil && got != portID {
+						err = fmt.Errorf("port settings were recreated (%s, was %s)", got, portID)
+					}
+					if d := c.device(t, dev); d.GetReadoption() != configv1.ReadoptionState_READOPTION_STATE_IN_PROGRESS {
+						err = fmt.Errorf("device after apply = %v, want re-adoption in progress", d)
+					}
+					return err
+				},
 			},
 		},
 	})
