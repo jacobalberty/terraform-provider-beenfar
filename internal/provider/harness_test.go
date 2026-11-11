@@ -134,3 +134,94 @@ provider "beenfar" {
 }
 `, c.URL, c.Token) + hcl
 }
+
+// --- a second Terraform configuration ---
+
+// cliConfig is a separate Terraform configuration, with its own state, run
+// with the terraform (or tofu) CLI against the provider binary built from
+// this module. It stands for another team's configuration next to the one
+// under test.
+type cliConfig struct {
+	t   *testing.T
+	dir string
+	env []string
+	bin string
+}
+
+func newCLIConfig(t *testing.T) *cliConfig {
+	t.Helper()
+	bin := os.Getenv("TF_ACC_TERRAFORM_PATH")
+	if bin == "" {
+		for _, name := range []string{"terraform", "tofu"} {
+			if p, err := exec.LookPath(name); err == nil {
+				bin = p
+				break
+			}
+		}
+	}
+	if bin == "" {
+		t.Skip("no terraform or tofu binary")
+	}
+	pluginDir := t.TempDir()
+	build := exec.Command("go", "build", "-o", filepath.Join(pluginDir, "terraform-provider-beenfar"), "../..")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building the provider: %v\n%s", err, out)
+	}
+	rc := filepath.Join(t.TempDir(), "cli.tfrc")
+	if err := os.WriteFile(rc, fmt.Appendf(nil, `provider_installation {
+  dev_overrides {
+    "registry.terraform.io/jacobalberty/beenfar" = %[1]q
+    "registry.opentofu.org/jacobalberty/beenfar" = %[1]q
+  }
+  direct {}
+}
+`, pluginDir), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return &cliConfig{
+		t: t, dir: t.TempDir(), bin: bin,
+		env: append(os.Environ(), "TF_CLI_CONFIG_FILE="+rc, "TF_IN_AUTOMATION=1", "TF_ACC="),
+	}
+}
+
+func (c *cliConfig) write(hcl string) {
+	c.t.Helper()
+	full := `terraform {
+  required_providers {
+    beenfar = { source = "jacobalberty/beenfar" }
+  }
+}
+` + hcl
+	if err := os.WriteFile(filepath.Join(c.dir, "main.tf"), []byte(full), 0o600); err != nil {
+		c.t.Fatal(err)
+	}
+}
+
+func (c *cliConfig) run(args ...string) string {
+	c.t.Helper()
+	cmd := exec.Command(c.bin, append(args, "-no-color")...)
+	cmd.Dir, cmd.Env = c.dir, c.env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		c.t.Fatalf("%s %v: %v\n%s", filepath.Base(c.bin), args, err, out)
+	}
+	return string(out)
+}
+
+func (c *cliConfig) apply()   { c.run("apply", "-auto-approve", "-input=false") }
+func (c *cliConfig) destroy() { c.run("destroy", "-auto-approve", "-input=false") }
+
+// planIsEmpty reports whether a plan of the configuration has no changes.
+func (c *cliConfig) planIsEmpty() (bool, string) {
+	c.t.Helper()
+	cmd := exec.Command(c.bin, "plan", "-detailed-exitcode", "-input=false", "-no-color")
+	cmd.Dir, cmd.Env = c.dir, c.env
+	out, err := cmd.CombinedOutput()
+	if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 2 {
+		return false, string(out)
+	}
+	if err != nil {
+		c.t.Fatalf("plan: %v\n%s", err, out)
+	}
+	return true, string(out)
+}

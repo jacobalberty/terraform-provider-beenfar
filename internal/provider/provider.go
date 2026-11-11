@@ -112,6 +112,7 @@ func (p *beenfarProvider) Resources(context.Context) []func() resource.Resource 
 	return []func() resource.Resource{
 		newNetworkResource,
 		newWifiNetworkResource,
+		newWifiNetworkAPGroupsResource,
 		newRadiusServerResource,
 	}
 }
