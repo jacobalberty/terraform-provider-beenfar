@@ -118,5 +118,11 @@ func (p *beenfarProvider) Resources(context.Context) []func() resource.Resource 
 }
 
 func (p *beenfarProvider) DataSources(context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		newPendingDevicesDataSource,
+		newAdaptersDataSource,
+		newDeviceDataSource,
+		newNetworkDataSource,
+		newRadiusServerDataSource,
+	}
 }

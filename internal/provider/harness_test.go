@@ -3,7 +3,9 @@ package provider
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/jacobalberty/go-unifi/inform"
 )
 
 // Acceptance tests run against a real beenfard on a temporary SQLite
@@ -133,6 +136,70 @@ provider "beenfar" {
   token = %q
 }
 `, c.URL, c.Token) + hcl
+}
+
+// --- UniFi devices ---
+
+// fakeDevice is a UniFi access point as far as the inform protocol goes.
+type fakeDevice struct {
+	mac net.HardwareAddr
+	key []byte
+	cfg string // cfgversion it reports
+}
+
+func newFakeDevice(last byte) *fakeDevice {
+	return &fakeDevice{mac: net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0x10, last}, key: inform.DefaultKey()}
+}
+
+func (d *fakeDevice) MAC() string { return d.mac.String() }
+
+// inform sends one inform and returns the HTTP status and, for a 200, the
+// decoded reply.
+func (d *fakeDevice) inform(t *testing.T, c *controller) (int, map[string]any) {
+	t.Helper()
+	msg, _ := json.Marshal(map[string]any{
+		"mac": d.MAC(), "model": "U7PG2", "version": "6.6.77", "cfgversion": d.cfg,
+		"default": bytes.Equal(d.key, inform.DefaultKey()),
+	})
+	flags := inform.FlagEncrypted | inform.FlagSnappy
+	p, err := inform.Seal(d.mac, flags, d.key, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := p.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Post(c.URL+"/inform", "application/x-binary", bytes.NewReader(wire))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return resp.StatusCode, nil
+	}
+	reply, err := inform.Parse(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := reply.Decode(d.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(plain, &out); err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, out
+}
+
+// announce makes the device known to the controller as pending.
+func (d *fakeDevice) announce(t *testing.T, c *controller) {
+	t.Helper()
+	if status, _ := d.inform(t, c); status != http.StatusNotFound {
+		t.Fatalf("first inform: HTTP %d, want 404", status)
+	}
 }
 
 // --- a second Terraform configuration ---
