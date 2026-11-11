@@ -244,3 +244,75 @@ func (f raceUI) CheckPlan(_ context.Context, _ plancheck.CheckPlanRequest, resp 
 		resp.Error = err
 	}
 }
+
+func TestAccRadiusServerAndEnterpriseWifi(t *testing.T) {
+	c := startController(t)
+	ctx := context.Background()
+	var radiusID string
+	config := func(secret string, acct int) string {
+		return c.config(fmt.Sprintf(`
+resource "beenfar_radius_server" "corp" {
+  name            = "corp"
+  address         = "10.2.1.76"
+  accounting_port = %d
+  shared_secret   = %q
+}
+
+resource "beenfar_wifi_network" "corp" {
+  ssid             = "corp"
+  security         = "wpa_enterprise"
+  radius_server_id = beenfar_radius_server.corp.id
+}`, acct, secret))
+	}
+	version := func(v int64) statecheck.StateCheck {
+		return statecheck.ExpectKnownValue("beenfar_radius_server.corp", tfjsonpath.New("shared_secret_version"), knownvalue.Int64Exact(v))
+	}
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: providers(),
+		Steps: []resource.TestStep{
+			{
+				Config:            config("s3cret", 1813),
+				ConfigStateChecks: []statecheck.StateCheck{version(1)},
+				Check: resource.ComposeTestCheckFunc(
+					func(s *terraform.State) (err error) {
+						radiusID, err = stateID(s, "beenfar_radius_server.corp")
+						return err
+					},
+					resource.TestCheckResourceAttrPair("beenfar_wifi_network.corp", "radius_server_id", "beenfar_radius_server.corp", "id"),
+					resource.TestCheckNoResourceAttr("beenfar_radius_server.corp", "auth_port"),
+				),
+			},
+			{
+				// Rotating the secret moves the version.
+				Config:            config("n3w-secret", 0),
+				ConfigStateChecks: []statecheck.StateCheck{version(2)},
+			},
+			{
+				// The secret replaced outside Terraform is noticed through
+				// the version and set again.
+				PreConfig: func() {
+					if _, err := c.Client.Radius.UpdateRadiusServer(ctx, &configv1.UpdateRadiusServerRequest{
+						RadiusServer: &configv1.RadiusServer{Id: radiusID, SharedSecret: "ui-secret"},
+						UpdateMask:   &fieldmaskpb.FieldMask{Paths: []string{"shared_secret"}},
+					}); err != nil {
+						t.Fatal(err)
+					}
+				},
+				Config: config("n3w-secret", 0),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("beenfar_radius_server.corp", plancheck.ResourceActionUpdate),
+				}},
+				ConfigStateChecks: []statecheck.StateCheck{version(4)},
+			},
+			{
+				ResourceName:      "beenfar_radius_server.corp",
+				ImportState:       true,
+				ImportStateVerify: true,
+				// Import records the port the controller defaulted, and leaves
+				// out the secret it never returns and the accounting port the
+				// configuration sets to zero.
+				ImportStateVerifyIgnore: []string{"shared_secret", "auth_port", "accounting_port"},
+			},
+		},
+	})
+}

@@ -6,6 +6,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -151,5 +152,94 @@ func newWifiNetworkResource() resource.Resource {
 			_, err := c.Wifi.DeleteWifiNetwork(ctx, &configv1.DeleteWifiNetworkRequest{Id: id})
 			return err
 		},
+	}
+}
+
+// --- beenfar_radius_server ---
+
+func newRadiusServerResource() resource.Resource {
+	return &crud[model.RadiusServer, *configv1.RadiusServer]{
+		typeName: "_radius_server",
+		what:     "RADIUS server",
+		schema: schema.Schema{
+			MarkdownDescription: "A RADIUS server for WPA-enterprise wifi networks." + partialNote +
+				"\n\nThe controller never returns the shared secret. It reports `shared_secret_version`, " +
+				"which changes whenever the secret does; when it changes outside Terraform, the next plan " +
+				"sets the secret from the configuration again. After an import, the first apply sends the secret.",
+			Attributes: map[string]schema.Attribute{
+				"id":      idAttribute(),
+				"name":    schema.StringAttribute{MarkdownDescription: "Display name, 1-64 bytes; unique.", Required: true, Validators: []validator.String{stringvalidator.LengthBetween(1, 64)}},
+				"address": schema.StringAttribute{MarkdownDescription: "IPv4 or IPv6 address of the server.", Required: true},
+				"auth_port": optionalInt("Authentication port; the controller uses 1812 when unset.",
+					int64validator.Between(1, 65535)),
+				"accounting_port": optionalInt("Accounting port, usually 1813; 0 or unset means no accounting.",
+					int64validator.Between(0, 65535)),
+				"shared_secret": schema.StringAttribute{
+					MarkdownDescription: "Shared secret, 1-128 printable ASCII characters. Write-only on the controller.",
+					Required:            true, Sensitive: true,
+					Validators: []validator.String{stringvalidator.LengthBetween(1, 128)},
+				},
+				"shared_secret_version": schema.Int64Attribute{
+					MarkdownDescription: "Increases whenever the shared secret changes.",
+					Computed:            true,
+					PlanModifiers:       []planmodifier.Int64{secretVersionModifier{}},
+				},
+			},
+		},
+		toModel:   convgen.RadiusServerToModel,
+		fromModel: convgen.RadiusServerFromModel,
+		idOf:      func(m model.RadiusServer) string { return m.ID.ValueString() },
+		setID:     func(p *configv1.RadiusServer, id string) { p.Id = id },
+		etagOf:    func(p *configv1.RadiusServer) string { return p.GetEtag() },
+		create: func(ctx context.Context, c *Client, p *configv1.RadiusServer) (*configv1.RadiusServer, error) {
+			r, err := c.Radius.CreateRadiusServer(ctx, &configv1.CreateRadiusServerRequest{RadiusServer: p})
+			return r.GetRadiusServer(), err
+		},
+		get: func(ctx context.Context, c *Client, id string) (*configv1.RadiusServer, error) {
+			r, err := c.Radius.GetRadiusServer(ctx, &configv1.GetRadiusServerRequest{Id: id})
+			return r.GetRadiusServer(), err
+		},
+		update: func(ctx context.Context, c *Client, p *configv1.RadiusServer, etag string, mask *fieldmaskpb.FieldMask) (*configv1.RadiusServer, error) {
+			p.Etag = etag
+			r, err := c.Radius.UpdateRadiusServer(ctx, &configv1.UpdateRadiusServerRequest{RadiusServer: p, UpdateMask: mask})
+			return r.GetRadiusServer(), err
+		},
+		del: func(ctx context.Context, c *Client, id string) error {
+			_, err := c.Radius.DeleteRadiusServer(ctx, &configv1.DeleteRadiusServerRequest{Id: id})
+			return err
+		},
+		// A secret replaced outside Terraform shows as a new version: forget
+		// the recorded secret so the plan sets it again.
+		afterRead: func(prior, server model.RadiusServer, out *model.RadiusServer) {
+			if !prior.SharedSecretVersion.IsNull() && !prior.SharedSecretVersion.IsUnknown() &&
+				!prior.SharedSecretVersion.Equal(server.SharedSecretVersion) {
+				out.SharedSecret = types.StringNull()
+			}
+		},
+	}
+}
+
+// secretVersionModifier keeps shared_secret_version from the state unless
+// the plan changes the secret, in which case the controller assigns a new
+// one.
+type secretVersionModifier struct{}
+
+func (secretVersionModifier) Description(context.Context) string {
+	return "Known unless the shared secret changes."
+}
+
+func (m secretVersionModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (secretVersionModifier) PlanModifyInt64(ctx context.Context, req planmodifier.Int64Request, resp *planmodifier.Int64Response) {
+	if req.StateValue.IsNull() || req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	var planned, stored types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("shared_secret"), &planned)...)
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("shared_secret"), &stored)...)
+	if planned.Equal(stored) {
+		resp.PlanValue = req.StateValue
 	}
 }
