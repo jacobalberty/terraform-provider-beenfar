@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  # Pushes to main run this suite through release.yml, before any release.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOLANGCI_LINT_VERSION: v2.15.0
+  GOVULNCHECK_VERSION: v1.9.0
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - run: go vet ./...
+      - run: go test -race -shuffle=on -count=1 ./...
+
+  generated:
+    name: generated code and docs are in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive examples
+      - run: go generate ./...
+      - name: Fail if generation changed anything
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Generated code or docs are out of date. Run 'go generate ./...' and commit the result."
+            git status --porcelain
+            git --no-pager diff
+            exit 1
+          fi
+
+  gofix:
+    name: go fix is clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+      - run: go fix ./...
+      - name: Fail if go fix changed anything
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::'go fix' produced changes. Run it locally and commit the result."
+            git --no-pager diff
+            exit 1
+          fi
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+      - run: go run golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }} ./...
+
+  acceptance:
+    name: acceptance (${{ matrix.cli }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cli: [ terraform, tofu ]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: hashicorp/setup-terraform@v4
+        if: matrix.cli == 'terraform'
+        with:
+          terraform_wrapper: false
+      - uses: opentofu/setup-opentofu@v2
+        if: matrix.cli == 'tofu'
+        with:
+          tofu_wrapper: false
+      - name: Build beenfard at the api module's version
+        run: echo "BEENFARD=$(.github/scripts/build-beenfard.sh "$RUNNER_TEMP")" >> "$GITHUB_ENV"
+      - name: Point the tests at OpenTofu
+        if: matrix.cli == 'tofu'
+        run: |
+          echo "TF_ACC_TERRAFORM_PATH=$(command -v tofu)" >> "$GITHUB_ENV"
+          echo "TF_ACC_PROVIDER_HOST=registry.opentofu.org" >> "$GITHUB_ENV"
+      - run: go test -count=1 -v ./internal/provider/
+        env:
+          TF_ACC: "1"
