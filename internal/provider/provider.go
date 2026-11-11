@@ -111,6 +111,7 @@ func (p *beenfarProvider) Configure(ctx context.Context, req provider.ConfigureR
 func (p *beenfarProvider) Resources(context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		newNetworkResource,
+		newWifiNetworkResource,
 	}
 }
 
