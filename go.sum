@@ -115,8 +115,8 @@ github.com/hashicorp/terraform-svchost v0.2.1 h1:ubvrTFw3Q7CsoEaX7V06PtCTKG3wu7G
 github.com/hashicorp/terraform-svchost v0.2.1/go.mod h1:zDMheBLvNzu7Q6o9TBvPqiZToJcSuCLXjAXxBslSky4=
 github.com/hashicorp/yamux v0.1.2 h1:XtB8kyFOyHXYVFnwT5C3+Bdo8gArse7j2AQ0DA0Uey8=
 github.com/hashicorp/yamux v0.1.2/go.mod h1:C+zze2n6e/7wshOZep2A70/aQU6QBRWJO/G6FT1wIns=
-github.com/jacobalberty/beenfar/api v0.0.0-20261111233545-d6ff75758642 h1:fw9UylVsElAnifymVFhgNsQ6KSowUjU11O7QKsdsW/Y=
-github.com/jacobalberty/beenfar/api v0.0.0-20261111233545-d6ff75758642/go.mod h1:b6xpT9+AKhniwU5YRgGVlTRwC2i6yFaF5ol/AtJ8qMQ=
+github.com/jacobalberty/beenfar/api v0.1.0 h1:GUgntM10Q0bcK6H189Iztl6+AopvUjFClPTtl1flvTE=
+github.com/jacobalberty/beenfar/api v0.1.0/go.mod h1:b6xpT9+AKhniwU5YRgGVlTRwC2i6yFaF5ol/AtJ8qMQ=
 github.com/jacobalberty/go-unifi v0.1.0 h1:yoU+Q0rHAEuBMx0Rx/9u6cMPa8h/OHEQoFsJQ7448LQ=
 github.com/jacobalberty/go-unifi v0.1.0/go.mod h1:KQwH/RRaiAufG3rTl4DzUEB+xl1xi5dmPBzwfru5IvY=
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 h1:BQSFePA1RWJOlocH6Fxy8MmwDt+yVQYULKfN0RoTN8A=

@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/hashicorp/terraform-plugin-go v0.31.0
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
-	github.com/jacobalberty/beenfar/api v0.0.0-20261111233545-d6ff75758642
+	github.com/jacobalberty/beenfar/api v0.1.0
 	github.com/jacobalberty/go-unifi v0.1.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
