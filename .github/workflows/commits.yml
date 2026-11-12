@@ -1,0 +1,34 @@
+name: Conventional commits
+
+# Releases are computed from commit messages, so every commit that lands on
+# main must follow https://www.conventionalcommits.org/.
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check commit subjects
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          re='^(feat|fix|perf|refactor|docs|test|build|ci|chore|style|revert)(\([a-z0-9._/-]+\))?!?: [^ ].*'
+          bad=0
+          while IFS= read -r line; do
+            sha=${line%% *}; subject=${line#* }
+            if ! [[ "$subject" =~ $re ]]; then
+              echo "::error::${sha:0:7} '$subject' is not a conventional commit (type(scope)!: description)"
+              bad=1
+            fi
+          done < <(git log --no-merges --format='%H %s' "$BASE..$HEAD")
+          exit $bad
