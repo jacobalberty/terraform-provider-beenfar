@@ -8,8 +8,9 @@ name: Release
 #
 # Version rules: feat bumps minor, fix and perf bump patch, other types do
 # not release. Breaking changes bump the minor version while 0.x; v1.0.0 and
-# new major versions are only released by hand. With no tag yet, v0.0.0 is
-# the baseline, so the first feat releases v0.1.0.
+# new major versions are only released by hand. Tag v0.0.0 marks the initial
+# commit as the baseline: semver-action compares against an existing tag, so
+# it must stay.
 #
 # This only tags and publishes release notes. Building and signing provider
 # binaries for the Terraform and OpenTofu registries (goreleaser) is a
@@ -62,7 +63,6 @@ jobs:
           patchList: fix, perf
           noNewCommitBehavior: current
           noVersionBumpBehavior: current
-          fallbackTag: v0.0.0
 
       - name: Determine version
         id: version
