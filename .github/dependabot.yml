@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule: { interval: weekly }
+    # commits.yml rejects non-conventional subjects, so do not rely on
+    # Dependabot guessing the style from the history.
+    commit-message:
+      prefix: build(deps)
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      github-actions:
+        patterns: ["*"]
