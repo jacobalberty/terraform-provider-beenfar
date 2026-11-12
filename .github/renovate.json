@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "description": "Renovate only bumps the go directive in go.mod, keeping it on the latest Go release like beenfar's.",
+  "enabledManagers": ["gomod"],
+  "semanticCommits": "enabled",
+  "packageRules": [
+    {
+      "description": "Module dependencies are not managed by Renovate.",
+      "matchManagers": ["gomod"],
+      "enabled": false
+    },
+    {
+      "description": "Track the latest Go release at x.y.0, as beenfar does: the provider imports beenfar's api module, whose go directive follows the latest release, so it cannot require an older Go. Patch releases are not required, so patch-only bumps are not proposed.",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["golang"],
+      "matchDepNames": ["go"],
+      "enabled": true,
+      "rangeStrategy": "bump",
+      "allowedVersions": "/^\\d+\\.\\d+\\.0$/",
+      "commitMessageTopic": "Go version"
+    }
+  ]
+}
