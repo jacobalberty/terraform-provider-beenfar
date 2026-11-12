@@ -2,7 +2,10 @@ version: 2
 updates:
   - package-ecosystem: gomod
     directory: /
-    schedule: { interval: weekly }
+    # Daily, so a release of the beenfar api module (which this provider is
+    # generated against) reaches the provider within a day, not a week. Dependabot
+    # only opens a PR when there is an update.
+    schedule: { interval: daily }
     # commits.yml rejects non-conventional subjects, so do not rely on
     # Dependabot guessing the style from the history.
     commit-message:
