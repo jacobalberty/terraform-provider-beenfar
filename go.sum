@@ -54,8 +54,8 @@ github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaS
 github.com/golang/protobuf v1.5.2/go.mod h1:XVQd3VNwM+JqD3oG2Ue2ip4fOMUkwXdXDdiuN0vRsmY=
 github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
 github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
-github.com/golang/snappy v0.0.4 h1:yAGX7huGHXlcLOEtBnF4w7FQwA26wojNCwOYAEhLjQM=
-github.com/golang/snappy v0.0.4/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
+github.com/golang/snappy v1.0.0 h1:Oy607GVXHs7RtbggtPBnr2RmDArIsAefDwvrdWvRhGs=
+github.com/golang/snappy v1.0.0/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
 github.com/google/go-cmp v0.3.1/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMywk6iLU=
 github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
@@ -115,10 +115,10 @@ github.com/hashicorp/terraform-svchost v0.2.1 h1:ubvrTFw3Q7CsoEaX7V06PtCTKG3wu7G
 github.com/hashicorp/terraform-svchost v0.2.1/go.mod h1:zDMheBLvNzu7Q6o9TBvPqiZToJcSuCLXjAXxBslSky4=
 github.com/hashicorp/yamux v0.1.2 h1:XtB8kyFOyHXYVFnwT5C3+Bdo8gArse7j2AQ0DA0Uey8=
 github.com/hashicorp/yamux v0.1.2/go.mod h1:C+zze2n6e/7wshOZep2A70/aQU6QBRWJO/G6FT1wIns=
-github.com/jacobalberty/beenfar/api v0.1.0 h1:GUgntM10Q0bcK6H189Iztl6+AopvUjFClPTtl1flvTE=
-github.com/jacobalberty/beenfar/api v0.1.0/go.mod h1:b6xpT9+AKhniwU5YRgGVlTRwC2i6yFaF5ol/AtJ8qMQ=
-github.com/jacobalberty/go-unifi v0.1.0 h1:yoU+Q0rHAEuBMx0Rx/9u6cMPa8h/OHEQoFsJQ7448LQ=
-github.com/jacobalberty/go-unifi v0.1.0/go.mod h1:KQwH/RRaiAufG3rTl4DzUEB+xl1xi5dmPBzwfru5IvY=
+github.com/jacobalberty/beenfar/api v0.4.0 h1:9S91vD7y4Z4N3SyyqXo0U4tIJKXux/F552ezlIsNTuk=
+github.com/jacobalberty/beenfar/api v0.4.0/go.mod h1:b6xpT9+AKhniwU5YRgGVlTRwC2i6yFaF5ol/AtJ8qMQ=
+github.com/jacobalberty/go-unifi v0.2.0 h1:XsnUQmL9FNQ10C5vU/fTktkhs6ImPZmXCPOegXpedAw=
+github.com/jacobalberty/go-unifi v0.2.0/go.mod h1:88y+WLRtF8h8zg/EFr+8u5DG0kTa7LqJ1Q56JMKmc5Q=
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 h1:BQSFePA1RWJOlocH6Fxy8MmwDt+yVQYULKfN0RoTN8A=
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99/go.mod h1:1lJo3i6rXxKeerYnT8Nvf0QmHCRC1n8sfWVwXF2Frvo=
 github.com/jhump/protoreflect v1.17.0 h1:qOEr613fac2lOuTgWN4tPAtLL7fUSbuJL5X5XumQh94=
